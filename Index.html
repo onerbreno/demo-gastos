@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <base target="_top" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8" />
+    <title>Gastos + inteligentes</title>
+    <?!= include('Estilos') ?>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+
+  <body>
+    <!-- ═══ Overlay de Login ═══ -->
+    <div id="user-overlay" class="hidden">
+      <div class="overlay-card">
+        <div class="overlay-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><rect x="6" y="12" width="3" height="7"/><rect x="11" y="8" width="3" height="11"/><rect x="16" y="4" width="3" height="15"/></svg></div>
+        <h2>Gastos + inteligentes</h2>
+        <p>Confirme sua identidade para acessar seus dados.</p>
+        <button class="google-btn" id="btnGoogle" onclick="Auth.usarContaGoogle()" style="display: none">
+          <span class="g-icon">G</span>
+          <span id="googleNomeBtn">Continuar com Google</span>
+        </button>
+        <div class="overlay-divider" id="overlayDivider" style="display: none">ou</div>
+        <div class="overlay-resp-list" id="overlayRespList" style="display: none"></div>
+        <div class="overlay-divider" id="overlayRespDivider" style="display: none">ou</div>
+        <input type="email" id="overlay-nome" placeholder="Digite seu e-mail" maxlength="100" autocomplete="email" />
+        <button class="btn-entrar" onclick="Auth.confirmarManual()">Entrar</button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal de Ajuste de Investimento ═══ -->
+    <div class="modal-overlay hidden" id="investModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Adicionar investimento / ajuste</h3>
+          <button class="modal-close" onclick="ModalInvest.fechar()">&#x2715;</button>
+        </div>
+        <div class="modal-body" style="display:block">
+          <p style="font-size: 0.82rem; color: var(--gray-600); margin-bottom: 14px">
+            Use para registrar investimentos pré-existentes ou ajustes de valor. Não afeta saldo nem orçamento, apenas soma aos totais da categoria.
+          </p>
+          <div class="form-row">
+            <div class="form-group"><label>Data</label><input type="date" id="inv-data" /></div>
+            <div class="form-group"><label>Categoria</label>
+              <select id="inv-tipo"></select>
+            </div>
+            <div class="form-group" style="grid-column: span 2"><label>Descrição</label><input type="text" id="inv-desc" placeholder="Ex: Aporte inicial, Valorização" /></div>
+            <div class="form-group"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="inv-valor" placeholder="0,00" oninput="Util.formatarValorInput(this)" /></div>
+            <div class="form-group"><label>Banco</label>
+              <select id="inv-banco"></select>
+            </div>
+            <div class="form-group"><label>Responsável</label><input type="text" id="inv-resp" readonly /></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" onclick="ModalInvest.fechar()">Cancelar</button>
+          <button class="btn-save" id="btnLancarInv" onclick="Formularios.lancarInvestimento()">Lançar investimento</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Modal de Projeção de Aportes ═══ -->
+    <div class="modal-overlay hidden" id="projecaoModal" onclick="if(event.target===this)ModalProjecao.fechar()">
+      <div class="modal-card modal-card-proj">
+        <div class="modal-header">
+          <h3>Projeção de aportes</h3>
+          <button class="modal-close" onclick="ModalProjecao.fechar()">&#x2715;</button>
+        </div>
+        <div class="modal-body-proj">
+          <div id="projecao-invest-section"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Modal de Edição ═══ -->
+    <div class="modal-overlay hidden" id="editModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="editModalTitle">Editar Registro</h3>
+          <button class="modal-close" onclick="Modal.fechar()">&#x2715;</button>
+        </div>
+        <div class="modal-body" id="editModalBody"></div>
+        <div class="modal-footer">
+          <button class="btn-cancel" onclick="Modal.fechar()">Cancelar</button>
+          <button class="btn-save" id="btnSalvarEdicao" onclick="Modal.salvar()">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Shell: sidebar + coluna principal ═══ -->
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-top">
+          <div class="sidebar-brand">
+            <div class="sidebar-brand-word">Gastos + inteligentes - /<span class="sidebar-brand-sub">Painel financeiro</span></div>
+          </div>
+          <button class="sidebar-toggle" onclick="Sidebar.toggle()" aria-label="Recolher menu" title="Recolher/expandir menu">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+        </div>
+        <nav class="sidebar-nav" id="navSidebar"></nav>
+      </aside>
+
+      <div class="app-main">
+        <!-- ═══ Topbar: mês + usuário ═══ -->
+        <header class="topbar">
+          <div class="topbar-inner">
+          <div class="topbar-left">
+            <div class="month-controls">
+              <div class="mes-bar">
+                <button class="mes-nav-btn" onclick="Navegacao.mudarMes(-1)">&#8249;</button>
+                <span class="mes-label" id="mesLabel">...</span>
+                <button class="mes-nav-btn" onclick="Navegacao.mudarMes(1)">&#8250;</button>
+              </div>
+              <button class="mes-hoje-btn" id="mesHojeBtn" onclick="Navegacao.irParaHoje()">Mês atual</button>
+            </div>
+          </div>
+          <div class="header-controls">
+            <div class="user-switcher" id="userSwitcher">
+              <div class="user-badge" onclick="Auth.toggleDropdown()" title="Menu do usuário">
+                <div class="user-avatar" id="headerAvatar">?</div>
+                <svg class="icon icon-sm user-chip-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+              <div class="user-dropdown" id="userDropdown">
+                <div class="user-dropdown-head">
+                  <div class="user-avatar user-avatar-lg" id="dropdownAvatar">?</div>
+                  <div class="user-dropdown-email" id="dropdownEmail"></div>
+                </div>
+                <button class="dropdown-action-item" onclick="Navegacao.trocarTab('categorias'); Auth.fecharDropdown()">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+                  Configurações
+                </button>
+                <button class="dropdown-action-item" onclick="Tema.alternar()">
+                  <svg class="icon" id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+                  <span id="themeMenuLabel">Ativar tema escuro</span>
+                </button>
+                <div class="dropdown-divider"></div>
+                <div class="dropdown-header">Trocar usuário</div>
+                <div id="dropdownUsers"></div>
+                <div class="dropdown-input-row">
+                  <input type="email" id="dropdownNovoNome" placeholder="Outro e-mail..." maxlength="100" />
+                  <button onclick="Auth.adicionarViaDropdown()">OK</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+        </header>
+
+        <!-- ═══ Conteúdo Principal ═══ -->
+        <main class="main-content">
+        <div id="app-loading">Carregando...</div>
+
+      <!-- ── Dashboard ── -->
+      <section class="tab-panel active" id="panel-dashboard">
+        <div id="db-loading" style="text-align: center; padding: 40px; color: var(--gray-600)">Carregando...</div>
+        <div id="db-content" style="display: none">
+          <div class="page-head">
+            <div><span class="page-eyebrow">Visão geral</span><h2 class="page-title">Dashboard</h2></div>
+            <button class="btn-secondary" onclick="Navegacao.trocarTab('graficos')">
+              <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5V12l6.5 4.3"/></svg>
+              Ver gráficos
+            </button>
+          </div>
+          <div class="saldo-card collapsed" id="saldoCard" onclick="Grupos.toggleCard('saldoCard')" title="Expandir/retrair" aria-label="Expandir/retrair">
+            <div class="mini-card-header">
+              <div class="saldo-label">Saldo do mês</div>
+              <button class="card-toggle-btn" tabindex="-1"><span class="grupo-toggle-chevron"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></button>
+            </div>
+            <div class="saldo-card-body">
+              <div class="saldo-valor" id="saldoValor">R$ 0,00</div>
+            </div>
+          </div>
+          <div class="saldo-detail-card">
+            <div class="saldo-sub-list">
+              <div class="saldo-sub-row">
+                <div class="saldo-label">Mês anterior</div>
+                <div style="font-size: 0.95rem; font-weight: 800" id="saldoAnterior"></div>
+              </div>
+              <div class="saldo-sub-row">
+                <div class="saldo-label">Entradas</div>
+                <div style="font-size: 0.95rem; font-weight: 800" id="saldoEntradas"></div>
+              </div>
+              <div class="saldo-sub-row">
+                <div class="saldo-label">Saídas</div>
+                <div style="font-size: 0.95rem; font-weight: 800" id="saldoSaidas"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="orc-dash-card" id="orcDashCard">
+            <div>
+              <div class="orc-dash-label">Orçamento para gastos livres</div>
+              <div class="orc-dash-valor" id="orcDashValor">R$ 0,00</div>
+              <div class="orc-dash-hint" id="orcDashHint">Configure no Planejamento</div>
+            </div>
+          </div>
+
+          <div class="resumo-grid">
+            <div class="resumo-card rc-green"><div class="rlabel">Ganhos planejados</div><div class="rvalor" id="cGanhosPlano"></div></div>
+            <div class="resumo-card rc-green"><div class="rlabel">Ganhos extras</div><div class="rvalor" id="cGanhos" style="opacity: 0.75"></div></div>
+            <div class="resumo-card rc-orange"><div class="rlabel">Imprevistos</div><div class="rvalor" id="cImprev"></div></div>
+            <div class="resumo-card rc-red"><div class="rlabel">Previstos</div><div class="rvalor" id="cGastosR"></div></div>
+            <div class="resumo-card rc-purple"><div class="rlabel">Investimentos</div><div class="rvalor" id="cInvestR"></div></div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-header">
+              <h3>Lançamentos</h3>
+              <button class="btn-refresh" id="btnRefreshDash" title="Atualizar" onclick="Dados.recarregarComBtn(this)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg></button>
+            </div>
+            <div class="lancamentos-lista" id="ultimosLanc"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Ganhos extras ── -->
+      <section class="tab-panel" id="panel-ganhos">
+        <div class="page-head">
+          <div><span class="page-eyebrow">Entradas fora do planejamento</span><h2 class="page-title">Ganhos extras</h2></div>
+          <button class="btn-primary" onclick="ModalForm.abrir('ganhos')">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Lançar ganho extra
+          </button>
+        </div>
+        <div class="info-cards-row" id="ganhos-info-cards">
+          <div class="info-card saldo-mini" id="ganhos-saldo-card">
+            <div class="info-card-label" id="ganhos-saldo-mes">Saldo do mês</div>
+            <div class="info-card-valor" id="ganhos-saldo-valor">R$ 0,00</div>
+          </div>
+          <div class="info-card orcamento na" id="ganhos-orc-card">
+            <div class="info-card-label">Orçamento para Gastos</div>
+            <div class="info-card-valor" id="ganhos-orc-valor">--</div>
+          </div>
+        </div>
+        <div class="modal-overlay form-modal hidden" id="modal-form-ganhos" onclick="if(event.target===this)ModalForm.fechar('ganhos')">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>Lançar ganho extra</h3>
+              <button class="modal-close" onclick="ModalForm.fechar('ganhos')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-row">
+                <div class="form-group"><label>Data</label><input type="date" id="g-data" /></div>
+                <div class="form-group" style="grid-column: span 2"><label>Descrição</label><input type="text" id="g-desc" placeholder="Descrição da transação" /></div>
+                <div class="form-group"><label>Tipo</label>
+                  <select id="g-tipo"></select>
+                </div>
+                <div class="form-group"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="g-valor" placeholder="0,00" oninput="Util.formatarValorInput(this)" /></div>
+                <div class="form-group"><label>Banco</label>
+                  <select id="g-banco"></select>
+                </div>
+                <div class="form-group"><label>Responsável</label><input type="text" id="g-resp" readonly /></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-cancel" onclick="ModalForm.fechar('ganhos')">Cancelar</button>
+              <button class="btn-primary" id="btnLancarG" onclick="Formularios.lancarGanho()">Lançar ganho extra</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-card">
+          <div class="table-header"><h3>Lançamentos</h3><div class="th-acoes"><label class="chk-all-mobile" onclick="event.stopPropagation()"><input type="checkbox" id="chk-all-mobile-tbGanhos" onchange="BulkAction.toggleTodos('tbGanhos',this.checked)">Selecionar tudo</label><span class="th-sep"></span><button class="btn-refresh" onclick="Dados.recarregarComBtn(this)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg><span class="btn-label"> Atualizar</span></button></div></div>
+          <div class="bulk-bar hidden" id="bulk-bar-tbGanhos">
+            <span class="bulk-count"></span>
+            <div class="bulk-actions">
+              <button class="btn-bulk-del" onclick="BulkAction.excluir('tbGanhos')">Excluir</button>
+            </div>
+          </div>
+          <div class="ledger" id="tbGanhos">
+            <div class="empty-state"><div class="ei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="5.4" x2="12" y2="18.6"/><path d="M15 7.8H10.5a2.1 2.1 0 0 0 0 4.2h3a2.1 2.1 0 0 1 0 4.2H8.4" stroke-linejoin="round"/></svg></div><p>Nenhum ganho extra neste mês.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Imprevistos ── -->
+      <section class="tab-panel" id="panel-imprevistos">
+        <div class="page-head">
+          <div><span class="page-eyebrow">O que fugiu do plano</span><h2 class="page-title">Imprevistos</h2></div>
+          <button class="btn-primary" onclick="ModalForm.abrir('imprevistos')">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Lançar imprevisto
+          </button>
+        </div>
+        <div class="info-cards-row" id="imp-info-cards">
+          <div class="info-card saldo-mini" id="imp-saldo-card">
+            <div class="info-card-label" id="imp-saldo-mes">Saldo do mês</div>
+            <div class="info-card-valor" id="imp-saldo-valor">R$ 0,00</div>
+          </div>
+          <div class="info-card orcamento na" id="imp-orc-card">
+            <div class="info-card-label">Orçamento para Gastos</div>
+            <div class="info-card-valor" id="imp-orc-valor">--</div>
+          </div>
+          <div class="info-card reserva-em" id="imp-reserva-card">
+            <div class="info-card-label">Reserva de emergência</div>
+            <div class="info-card-valor" id="imp-reserva-valor">R$ 0,00</div>
+          </div>
+        </div>
+        <div class="modal-overlay form-modal hidden" id="modal-form-imprevistos" onclick="if(event.target===this)ModalForm.fechar('imprevistos')">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>Lançar gasto imprevisto</h3>
+              <button class="modal-close" onclick="ModalForm.fechar('imprevistos')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-row">
+                <div class="form-group"><label>Data</label><input type="date" id="gi-data" /></div>
+                <div class="form-group" style="grid-column: span 2"><label>Descrição</label><input type="text" id="gi-desc" placeholder="Descrição da transação" /></div>
+                <div class="form-group"><label>Categoria</label>
+                  <select id="gi-cat"></select>
+                </div>
+                <div class="form-group"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="gi-valor" placeholder="0,00" oninput="Util.formatarValorInput(this); Previews.imprevisto()" /></div>
+                <div class="form-group"><label>Banco</label>
+                  <select id="gi-banco"></select>
+                </div>
+                <div class="form-group"><label>Responsável</label><input type="text" id="gi-resp" readonly /></div>
+              </div>
+              <div class="preview-bar" id="preview-gi">
+                <span class="preview-bar-icon" id="preview-gi-icon">&#x2192;</span>
+                <span class="preview-bar-text">Saldo estimado após lançar</span>
+                <span class="preview-bar-val" id="preview-gi-val"></span>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-cancel" onclick="ModalForm.fechar('imprevistos')">Cancelar</button>
+              <button class="btn-primary" id="btnLancarGI" onclick="Formularios.lancarImprevisto()">Lançar imprevisto</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-header"><h3>Lançamentos</h3><div class="th-acoes"><label class="chk-all-mobile" onclick="event.stopPropagation()"><input type="checkbox" id="chk-all-mobile-tbGI" onchange="BulkAction.toggleTodos('tbGI',this.checked)">Selecionar tudo</label><span class="th-sep"></span><button class="btn-refresh" onclick="Dados.recarregarComBtn(this)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg><span class="btn-label"> Atualizar</span></button></div></div>
+          <div class="bulk-bar hidden" id="bulk-bar-tbGI">
+            <span class="bulk-count"></span>
+            <div class="bulk-actions">
+              <button class="btn-bulk-del" onclick="BulkAction.excluir('tbGI')">Excluir</button>
+            </div>
+          </div>
+          <div class="ledger" id="tbGI">
+            <div class="empty-state"><div class="ei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg></div><p>Nenhum gasto imprevisto neste mês.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Planejamento ── -->
+      <section class="tab-panel" id="panel-planejamento">
+        <div class="page-head">
+          <div><span class="page-eyebrow">O plano do mês</span><h2 class="page-title">Planejamento</h2></div>
+          <button class="btn-primary" onclick="ModalForm.abrir('planejamento')">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Adicionar item
+          </button>
+        </div>
+        <div class="orc-hero collapsed" id="orcHero" onclick="Grupos.toggleCard('orcHero')" title="Expandir/retrair" aria-label="Expandir/retrair">
+          <div class="mini-card-header">
+            <div class="oh-label">Orçamento para gastos livres</div>
+            <button class="card-toggle-btn" tabindex="-1"><span class="grupo-toggle-chevron"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></button>
+          </div>
+          <div class="oh-valores-row">
+            <div class="oh-valor-bloco">
+              <div class="oh-valor" id="orcValor">R$ 0,00</div>
+              <div class="oh-valor-sub-label">soma com saldo anterior</div>
+            </div>
+            <div class="oh-valor-sep"></div>
+            <div class="oh-valor-bloco">
+              <div class="oh-valor oh-valor-sec" id="orcValorAlt">R$ 0,00</div>
+              <div class="oh-valor-sub-label">soma com orç. anterior</div>
+            </div>
+          </div>
+          <div class="oh-grid">
+            <div class="oh-item">
+              <div class="oh-item-sub pos" id="ohSaldoAnteriorItem">
+                <div class="oh-item-label">(+) Saldo mês anterior</div>
+                <div class="oh-item-valor" id="orcSaldoAnterior">R$ 0,00</div>
+              </div>
+              <div class="oh-item-sub pos">
+                <div class="oh-item-label">(+) Ganhos planejados</div>
+                <div class="oh-item-valor" id="orcGanhos">R$ 0,00</div>
+              </div>
+            </div>
+            <div class="oh-item neg2">
+              <div class="oh-item-label">(-) Gastos planejados</div>
+              <div class="oh-item-valor" id="orcGastos">R$ 0,00</div>
+              <div class="oh-item-legend">Realizado / total</div>
+              <div class="oh-progress"><div class="oh-progress-bar" id="progGastos" style="width: 0%"></div></div>
+            </div>
+            <div class="oh-item neg2">
+              <div class="oh-item-label">(-) Investimentos</div>
+              <div class="oh-item-valor" id="orcInvest">R$ 0,00</div>
+              <div class="oh-item-legend">Realizado / total</div>
+              <div class="oh-progress"><div class="oh-progress-bar" id="progInvest" style="width: 0%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-overlay form-modal hidden" id="modal-form-planejamento" onclick="if(event.target===this)ModalForm.fechar('planejamento')">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>Adicionar item ao planejamento</h3>
+              <button class="modal-close" onclick="ModalForm.fechar('planejamento')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-row">
+                <div class="form-group"><label>Data</label><input type="date" id="p-data" /></div>
+                <div class="form-group"><label>Categoria</label>
+                  <select id="p-cat" onchange="Formularios.atualizarTiposPlan(); Previews.planejamento()"></select>
+                </div>
+                <div class="form-group"><label>Tipo</label>
+                  <select id="p-tipo"></select>
+                </div>
+                <div class="form-group" style="grid-column: span 2"><label>Descrição</label><input type="text" id="p-desc" placeholder="Descrição da transação" /></div>
+                <div class="form-group"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="p-valor" placeholder="0,00" oninput="Util.formatarValorInput(this); Previews.planejamento()" /></div>
+                <div class="form-group"><label>Status</label>
+                  <select id="p-status"></select>
+                </div>
+                <div class="form-group hidden" id="banco-wrap"><label>Banco</label>
+                  <select id="p-banco"></select>
+                </div>
+                <div class="form-group hidden" id="forma-pgto-wrap"><label>Forma de pagamento</label>
+                  <select id="p-forma-pgto">
+                    <option value="Débito">Débito</option>
+                    <option value="Crédito">Crédito</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Responsável</label><input type="text" id="p-resp" readonly /></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px; margin:-4px 0 12px;">
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.82rem; font-weight:600; color:var(--gray-600); user-select:none;">
+                  <input type="checkbox" id="p-parcelar" onchange="Formularios.toggleParcelas()" />
+                  Parcelar/recorrência
+                </label>
+                <div id="parcelas-qtd-group" style="display:none; align-items:center; gap:6px; font-size:0.82rem; color:var(--gray-600);">
+                  <span>em</span>
+                  <input type="number" id="p-num-parcelas" min="2" max="60" value="2" style="width:58px; padding:4px 8px; border:1.5px solid var(--gray-400); border-radius:7px; font-size:0.88rem; font-family:var(--font);" />
+                  <span>parcelas</span>
+                </div>
+              </div>
+              <div class="preview-bar" id="preview-plan">
+                <span class="preview-bar-icon" id="preview-plan-icon">&#x2192;</span>
+                <span class="preview-bar-text" id="preview-plan-text">Orçamento após lançar</span>
+                <span class="preview-bar-val" id="preview-plan-val"></span>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-cancel" onclick="ModalForm.fechar('planejamento')">Cancelar</button>
+              <button class="btn-primary" id="btnLancarP" onclick="Formularios.lancarPlanejamento()">Adicionar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ganhos Planejados -->
+        <div class="table-card" id="card-tbPlanGanhos" style="border-left: 4px solid var(--green)">
+          <div class="table-header grupo-header" onclick="Grupos.toggleCard('card-tbPlanGanhos')"><h3><span class="grupo-toggle-chevron"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span> Ganhos planejados</h3><div class="th-acoes"><label class="chk-all-mobile" onclick="event.stopPropagation()"><input type="checkbox" id="chk-all-mobile-tbPlanGanhos" onchange="BulkAction.toggleTodos('tbPlanGanhos',this.checked)">Selecionar tudo</label><span class="th-sep"></span><button class="btn-refresh" onclick="event.stopPropagation(); Dados.recarregarComBtn(this)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg><span class="btn-label"> Atualizar</span></button></div></div>
+          <div class="bulk-bar hidden" id="bulk-bar-tbPlanGanhos">
+            <span class="bulk-count"></span>
+            <div class="bulk-actions">
+              <button class="btn-bulk-real" onclick="BulkAction.marcarStatus('tbPlanGanhos','Realizado')">Realizado</button>
+              <button class="btn-bulk-pend" onclick="BulkAction.marcarStatus('tbPlanGanhos','Pendente')">Pendente</button>
+              <button class="btn-bulk-del" onclick="BulkAction.excluir('tbPlanGanhos')">Excluir</button>
+            </div>
+          </div>
+          <div class="ledger" id="tbPlanGanhos" ondragover="Reordenar.dragOver(event,'tbPlanGanhos')" ondrop="Reordenar.drop(event,'tbPlanGanhos')">
+            <div class="empty-state"><div class="ei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="5.4" x2="12" y2="18.6"/><path d="M15 7.8H10.5a2.1 2.1 0 0 0 0 4.2h3a2.1 2.1 0 0 1 0 4.2H8.4" stroke-linejoin="round"/></svg></div><p>Nenhum Ganho planejado neste mês.</p></div>
+          </div>
+        </div>
+
+        <!-- Gastos Planejados -->
+        <div class="table-card" id="card-tbPlanGastos" style="border-left: 4px solid var(--orange)">
+          <div class="table-header grupo-header" onclick="Grupos.toggleCard('card-tbPlanGastos')"><h3><span class="grupo-toggle-chevron"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span> Gastos planejados</h3><div class="th-acoes"><label class="chk-all-mobile" onclick="event.stopPropagation()"><input type="checkbox" id="chk-all-mobile-tbPlanGastos" onchange="BulkAction.toggleTodos('tbPlanGastos',this.checked)">Selecionar tudo</label><span class="th-sep"></span><button class="btn-refresh" onclick="event.stopPropagation(); Dados.recarregarComBtn(this)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg><span class="btn-label"> Atualizar</span></button></div></div>
+          <div class="bulk-bar hidden" id="bulk-bar-tbPlanGastos">
+            <span class="bulk-count"></span>
+            <div class="bulk-actions">
+              <button class="btn-bulk-real" onclick="BulkAction.marcarStatus('tbPlanGastos','Realizado')">Realizado</button>
+              <button class="btn-bulk-pend" onclick="BulkAction.marcarStatus('tbPlanGastos','Pendente')">Pendente</button>
+              <button class="btn-bulk-del" onclick="BulkAction.excluir('tbPlanGastos')">Excluir</button>
+            </div>
+          </div>
+          <div class="ledger" id="tbPlanGastos" ondragover="Reordenar.dragOver(event,'tbPlanGastos')" ondrop="Reordenar.drop(event,'tbPlanGastos')">
+            <div class="empty-state"><div class="ei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="4" y="4" width="16" height="17" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M4 9.5h16"/><path d="M8.5 13.5l2 2 4-4.2"/></svg></div><p>Nenhum gasto planejado neste mês.</p></div>
+          </div>
+        </div>
+
+        <!-- Investimentos -->
+        <div class="table-card" id="card-tbPlanInvest" style="border-left: 4px solid var(--purple, #8b5cf6)">
+          <div class="table-header grupo-header" onclick="Grupos.toggleCard('card-tbPlanInvest')"><h3><span class="grupo-toggle-chevron"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span> Investimentos</h3><div class="th-acoes"><label class="chk-all-mobile" onclick="event.stopPropagation()"><input type="checkbox" id="chk-all-mobile-tbPlanInvest" onchange="BulkAction.toggleTodos('tbPlanInvest',this.checked)">Selecionar tudo</label><span class="th-sep"></span><button class="btn-refresh" onclick="event.stopPropagation(); Dados.recarregarComBtn(this)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg><span class="btn-label"> Atualizar</span></button></div></div>
+          <div class="bulk-bar hidden" id="bulk-bar-tbPlanInvest">
+            <span class="bulk-count"></span>
+            <div class="bulk-actions">
+              <button class="btn-bulk-real" onclick="BulkAction.marcarStatus('tbPlanInvest','Realizado')">Realizado</button>
+              <button class="btn-bulk-pend" onclick="BulkAction.marcarStatus('tbPlanInvest','Pendente')">Pendente</button>
+              <button class="btn-bulk-del" onclick="BulkAction.excluir('tbPlanInvest')">Excluir</button>
+            </div>
+          </div>
+          <div class="ledger" id="tbPlanInvest" ondragover="Reordenar.dragOver(event,'tbPlanInvest')" ondrop="Reordenar.drop(event,'tbPlanInvest')">
+            <div class="empty-state"><div class="ei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 19h16"/><rect x="6" y="12" width="3" height="7"/><rect x="11" y="8" width="3" height="11"/><rect x="16" y="4" width="3" height="15"/></svg></div><p>Nenhum investimento planejado neste mês.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Investimentos ── -->
+      <section class="tab-panel" id="panel-investimentos">
+        <div class="page-head">
+          <div><span class="page-eyebrow">Patrimônio</span><h2 class="page-title">Investimentos</h2></div>
+        </div>
+        <div class="invest-total-card">
+          <div>
+            <div class="invest-total-label">Total Investido (acumulado geral)</div>
+            <div class="invest-total-valor" id="investTotalGeral">R$ 0,00</div>
+          </div>
+          <div>
+            <button class="btn-secondary" onclick="ModalProjecao.abrir()">Projeção</button>
+            <button class="btn-primary" onclick="ModalInvest.abrir()">Novo ajuste</button>
+          </div>
+        </div>
+
+        <div class="invest-grid" id="investGrid"></div>
+
+        <div class="table-card">
+          <div class="table-header">
+            <h3>Lançamentos</h3>
+            <div class="th-acoes">
+              <label class="chk-all-mobile" onclick="event.stopPropagation()"><input type="checkbox" id="chk-all-mobile-tbInvest" onchange="BulkAction.toggleTodos('tbInvest',this.checked)">Selecionar tudo</label>
+              <span class="th-sep"></span>
+              <button class="btn-refresh" onclick="Dados.recarregarComBtn(this)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg><span class="btn-label"> Atualizar</span></button>
+            </div>
+          </div>
+          <div class="bulk-bar hidden" id="bulk-bar-tbInvest">
+            <span class="bulk-count"></span>
+            <div class="bulk-actions">
+              <button class="btn-bulk-real" onclick="BulkAction.marcarStatus('tbInvest','Realizado')">Realizado</button>
+              <button class="btn-bulk-pend" onclick="BulkAction.marcarStatus('tbInvest','Pendente')">Pendente</button>
+              <button class="btn-bulk-del" onclick="BulkAction.excluir('tbInvest')">Excluir</button>
+            </div>
+          </div>
+          <div class="ledger" id="tbInvest">
+            <div class="empty-state"><div class="ei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 19h16"/><rect x="6" y="12" width="3" height="7"/><rect x="11" y="8" width="3" height="11"/><rect x="16" y="4" width="3" height="15"/></svg></div><p>Nenhum investimento neste mês.</p></div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── Gráficos ── -->
+      <section class="tab-panel" id="panel-graficos">
+        <div class="page-head">
+          <div><span class="page-eyebrow">Análise</span><h2 class="page-title">Gráficos</h2></div>
+          <button class="btn-secondary" onclick="Navegacao.trocarTab('dashboard')">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+            Voltar ao dashboard
+          </button>
+        </div>
+        <div class="graficos-grid">
+          <div class="grafico-card grafico-full">
+            <div class="grafico-titulo">Saldo mensal — últimos 6 meses</div>
+            <div class="grafico-canvas-wrap">
+              <canvas id="chart-line-saldo"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card">
+            <div class="grafico-titulo">Entradas vs Saídas — últimos 6 meses</div>
+            <div class="grafico-canvas-wrap">
+              <canvas id="chart-bar-es"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card">
+            <div class="grafico-titulo">Imprevistos por categoria — mês atual</div>
+            <div class="grafico-canvas-wrap">
+              <canvas id="chart-donut-imp"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card">
+            <div class="grafico-titulo">Gastos planejados por tipo — mês atual</div>
+            <div class="grafico-canvas-wrap">
+              <canvas id="chart-donut-plan"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card grafico-full">
+            <div class="grafico-card-header">
+              <div class="grafico-titulo">Gastos planejados por tipo — últimos 6 meses</div>
+              <select id="sel-plan-tipo" class="grafico-select" onchange="Graficos._barPlanHist()"></select>
+            </div>
+            <div class="grafico-canvas-wrap grafico-canvas-tall">
+              <canvas id="chart-bar-plan-hist"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card grafico-full">
+            <div class="grafico-card-header">
+              <div class="grafico-titulo">Imprevistos por categoria — últimos 6 meses</div>
+              <select id="sel-imp-cat" class="grafico-select" onchange="Graficos._barImpHist()"></select>
+            </div>
+            <div class="grafico-canvas-wrap grafico-canvas-tall">
+              <canvas id="chart-bar-imp-hist"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card grafico-full">
+            <div class="grafico-titulo">Comparativo de categorias — gastos planejados</div>
+            <div class="grafico-canvas-wrap grafico-canvas-tall">
+              <canvas id="chart-line-plan-cats"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card grafico-full">
+            <div class="grafico-titulo">Comparativo de categorias — imprevistos</div>
+            <div class="grafico-canvas-wrap grafico-canvas-tall">
+              <canvas id="chart-line-imp-cats"></canvas>
+            </div>
+          </div>
+          <div class="grafico-card grafico-full">
+            <div class="grafico-titulo">Investimentos — últimos 6 meses</div>
+            <div class="grafico-canvas-wrap">
+              <canvas id="chart-line-invest"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Categorias ── -->
+      <section class="tab-panel" id="panel-categorias">
+        <div class="page-head">
+          <div><span class="page-eyebrow">Preferências</span><h2 class="page-title">Categorias</h2></div>
+          <button class="btn-primary" onclick="ModalForm.abrir('categorias')">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Nova categoria
+          </button>
+        </div>
+        <div class="modal-overlay form-modal hidden" id="modal-form-categorias" onclick="if(event.target===this)ModalForm.fechar('categorias')">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>Adicionar nova categoria</h3>
+              <button class="modal-close" onclick="ModalForm.fechar('categorias')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-row">
+                <div class="form-group" style="grid-column: span 2">
+                  <label>Nome</label>
+                  <input type="text" id="cat-nome" placeholder="Nome da categoria" maxlength="40" onkeydown="if(event.key==='Enter')Formularios.adicionarCategoria()" />
+                </div>
+                <div class="form-group">
+                  <label>Pertence à aba</label>
+                  <select id="cat-aba"></select>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-cancel" onclick="ModalForm.fechar('categorias')">Cancelar</button>
+              <button class="btn-primary" id="btnAddCat" onclick="Formularios.adicionarCategoria()">Adicionar categoria</button>
+            </div>
+          </div>
+        </div>
+        <div id="categorias-lista"></div>
+      </section>
+        </main>
+      </div>
+    </div>
+
+    <!-- ═══ Bottom-nav mobile ═══ -->
+    <nav class="mobile-bottom-nav" id="navBottomNav"></nav>
+
+    <button class="fab-add hidden" id="fabAdicionar" onclick="FabAdicionar.clicar()" title="Lançar rápido" aria-label="Lançar rápido">
+      <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+
+    <div id="toast-container"></div>
+
+    <?!= include('App') ?>
+  </body>
+</html>
